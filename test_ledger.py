@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from src.domain.entry import Entry, EntryType
-from src.domain.transacations import Transaction
+from domain.transactions import Transaction
 from src.domain.ledger_service import LedgerService
 
 

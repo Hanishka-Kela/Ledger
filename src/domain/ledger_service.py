@@ -1,7 +1,7 @@
 from uuid import UUID
 from dataclasses import dataclass, field
 from src.domain.entry import EntryType
-from src.domain.transacations import Transaction
+from domain.transactions import Transaction
 
 @dataclass
 class LedgerService:
