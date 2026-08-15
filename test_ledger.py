@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from src.domain.entry import Entry, EntryType
 from src.domain.transacations import Transaction
+from src.domain.ledger_service import LedgerService
 
 
 def test_ledger():
@@ -74,5 +75,82 @@ def test_ledger():
         print(f"SUCCESS: Caught expected error -> '{e}'")
 
 
+def test_ledger_service_balances():
+    print("\n--- Testing LedgerService Multi-Transaction Flow ---")
+    service = LedgerService()
+
+    alice_wallet = uuid4()
+    bob_wallet = uuid4()
+    system_pool = uuid4()
+
+    # Transaction 1: Alice deposits 50000 paise (₹500)
+    tx1_id = uuid4()
+    tx1 = Transaction(
+        transaction_id=tx1_id,
+        timestamp=datetime.now(),
+        description="Initial deposit to Alice",
+        entries=[
+            Entry(
+                entry_id=uuid4(),
+                transaction_id=tx1_id,
+                account_id=alice_wallet,
+                type=EntryType.DEBIT,
+                amount=50000,
+            ),
+            Entry(
+                entry_id=uuid4(),
+                transaction_id=tx1_id,
+                account_id=system_pool,
+                type=EntryType.CREDIT,
+                amount=50000,
+            ),
+        ],
+    )
+    service.post_transaction(tx1)
+
+    # Transaction 2: Alice transfers 20000 paise (₹200) to Bob
+    tx2_id = uuid4()
+    tx2 = Transaction(
+        transaction_id=tx2_id,
+        timestamp=datetime.now(),
+        description="Alice transfers to Bob",
+        entries=[
+            Entry(
+                entry_id=uuid4(),
+                transaction_id=tx2_id,
+                account_id=bob_wallet,
+                type=EntryType.DEBIT,
+                amount=20000,
+            ),
+            Entry(
+                entry_id=uuid4(),
+                transaction_id=tx2_id,
+                account_id=alice_wallet,
+                type=EntryType.CREDIT,
+                amount=20000,
+            ),
+        ],
+    )
+    service.post_transaction(tx2)
+
+    # Verify Alice's balance: +50000 (debit) - 20000 (credit) = 30000 paise (₹300)
+    alice_balance = service.get_account_balance(alice_wallet)
+    print(f"Alice's balance: {alice_balance} paise")
+    assert alice_balance == 30000
+
+    # Verify Bob's balance: +20000 (debit) = 20000 paise (₹200)
+    bob_balance = service.get_account_balance(bob_wallet)
+    print(f"Bob's balance: {bob_balance} paise")
+    assert bob_balance == 20000
+
+    # Verify System Pool balance: -50000 (credit) = -50000 paise (-₹500)
+    system_balance = service.get_account_balance(system_pool)
+    print(f"System pool balance: {system_balance} paise")
+    assert system_balance == -50000
+
+    print("SUCCESS: LedgerService balance calculations are completely verified!")
+
+
 if __name__ == "__main__":
     test_ledger()
+    test_ledger_service_balances()
