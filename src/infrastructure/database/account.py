@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.infrastructure.database.user import User
+    from src.infrastructure.database.entry import Entry
 
 
 class Account(Base):
@@ -16,3 +17,4 @@ class Account(Base):
     name:Mapped[str]=mapped_column(String, nullable=False)
     type: Mapped[AccountType] = mapped_column(Enum(AccountType))
     owner:Mapped["User"] = relationship(back_populates="accounts")
+    entries:Mapped[list["Entry"]] = relationship(back_populates="account")
