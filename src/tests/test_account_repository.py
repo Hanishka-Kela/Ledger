@@ -1,8 +1,11 @@
 from uuid import uuid4
 
 from src.infrastructure.database.user import User
-from src.infrastructure.database.account import Account
+from src.infrastructure.database.account import Account as ORMAccount
+
 from src.infrastructure.repositories.account_repository import AccountRepository
+
+from src.domain.account import Account as DomainAccount
 from src.domain.account import AccountType
 
 
@@ -17,7 +20,7 @@ def test_get_by_id(db_session):
         password_hash="hashed_password"
     )
 
-    account = Account(
+    account = ORMAccount(
         account_id=account_id,
         owner_id=user_id,
         name="Savings Account",
@@ -33,6 +36,10 @@ def test_get_by_id(db_session):
     retrieved_account = repository.get_by_id(account_id)
 
     assert retrieved_account is not None
+
+    assert isinstance(retrieved_account, DomainAccount)
+    assert not isinstance(retrieved_account, ORMAccount)
+
     assert retrieved_account.account_id == account_id
     assert retrieved_account.owner_id == user_id
     assert retrieved_account.name == "Savings Account"
@@ -52,14 +59,14 @@ def test_get_by_owner_id(db_session):
         password_hash="hashed_password"
     )
 
-    account_1 = Account(
+    account_1 = ORMAccount(
         account_id=account_1_id,
         owner_id=user_id,
         name="Savings Account",
         type=AccountType.ASSET
     )
 
-    account_2 = Account(
+    account_2 = ORMAccount(
         account_id=account_2_id,
         owner_id=user_id,
         name="Checking Account",
@@ -76,6 +83,10 @@ def test_get_by_owner_id(db_session):
     accounts = repository.get_by_owner_id(user_id)
 
     assert len(accounts) == 2
+
+    for account in accounts:
+        assert isinstance(account, DomainAccount)
+        assert not isinstance(account, ORMAccount)
 
     account_ids = {account.account_id for account in accounts}
 
