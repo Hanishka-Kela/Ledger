@@ -138,3 +138,64 @@ def test_get_by_account_id(db_session):
 
     assert entry_1_id in entry_ids
     assert entry_2_id in entry_ids
+
+
+def test_create(db_session):
+    user_id = uuid4()
+    account_id = uuid4()
+    transaction_id = uuid4()
+    entry_id = uuid4()
+
+    user = ORMUser(
+        user_id=user_id,
+        email=f"{uuid4()}@example.com",
+        password_hash="hashed_password"
+    )
+
+    account = ORMAccount(
+        account_id=account_id,
+        owner_id=user_id,
+        name="Savings Account",
+        type=AccountType.ASSET
+    )
+
+    transaction = ORMTransaction(
+        transaction_id=transaction_id,
+        timestamp=datetime.now(timezone.utc),
+        description="Test transaction"
+    )
+
+    db_session.add(user)
+    db_session.add(account)
+    db_session.add(transaction)
+    db_session.commit()
+
+    entry = DomainEntry(
+        entry_id=entry_id,
+        transaction_id=transaction_id,
+        account_id=account_id,
+        type=EntryType.DEBIT,
+        amount=20000
+    )
+
+    repository = EntryRepository(db_session)
+
+    created_entry = repository.create(entry)
+
+    db_session.commit()
+
+    assert created_entry is entry
+    assert isinstance(created_entry, DomainEntry)
+    assert not isinstance(created_entry, ORMEntry)
+
+    orm_entry = db_session.get(
+        ORMEntry,
+        entry_id
+    )
+
+    assert orm_entry is not None
+    assert orm_entry.entry_id == entry_id
+    assert orm_entry.transaction_id == transaction_id
+    assert orm_entry.account_id == account_id
+    assert orm_entry.type == EntryType.DEBIT
+    assert orm_entry.amount == 20000

@@ -78,3 +78,68 @@ def test_get_user_accounts_user_not_found(db_session):
 
     with pytest.raises(ValueError, match="User not Found"):
         service.get_user_accounts(user_id)
+
+
+def test_create_account(db_session):
+    user_id = uuid4()
+
+    user = ORMUser(
+        user_id=user_id,
+        email=f"{uuid4()}@example.com",
+        password_hash="hashed_password"
+    )
+
+    db_session.add(user)
+    db_session.commit()
+
+    user_repository = UserRepository(db_session)
+    account_repository = AccountRepository(db_session)
+
+    service = AccountService(
+        user_repository=user_repository,
+        account_repository=account_repository
+    )
+
+    account = service.create_account(
+        user_id=user_id,
+        name="New Savings Account",
+        account_type=AccountType.ASSET
+    )
+
+    db_session.commit()
+
+    assert isinstance(account, DomainAccount)
+
+    assert account.owner_id == user_id
+    assert account.name == "New Savings Account"
+    assert account.type == AccountType.ASSET
+
+    orm_account = db_session.get(
+        ORMAccount,
+        account.account_id
+    )
+
+    assert orm_account is not None
+    assert orm_account.account_id == account.account_id
+    assert orm_account.owner_id == user_id
+    assert orm_account.name == "New Savings Account"
+    assert orm_account.type == AccountType.ASSET
+
+
+def test_create_account_user_not_found(db_session):
+    user_id = uuid4()
+
+    user_repository = UserRepository(db_session)
+    account_repository = AccountRepository(db_session)
+
+    service = AccountService(
+        user_repository=user_repository,
+        account_repository=account_repository
+    )
+
+    with pytest.raises(ValueError, match="User not found"):
+        service.create_account(
+            user_id=user_id,
+            name="New Savings Account",
+            account_type=AccountType.ASSET
+        )

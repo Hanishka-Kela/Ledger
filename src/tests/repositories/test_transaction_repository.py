@@ -134,3 +134,33 @@ def test_get_entries(db_session):
 
     assert entry_1_id in entry_ids
     assert entry_2_id in entry_ids
+
+
+def test_create(db_session):
+    transaction_id = uuid4()
+
+    transaction = DomainTransaction(
+        transaction_id=transaction_id,
+        timestamp=datetime.now(timezone.utc),
+        description="Test transaction",
+        entries=[]
+    )
+
+    repository = TransactionRepository(db_session)
+
+    created_transaction = repository.create(transaction)
+
+    db_session.commit()
+
+    assert created_transaction is transaction
+    assert isinstance(created_transaction, DomainTransaction)
+    assert not isinstance(created_transaction, ORMTransaction)
+
+    orm_transaction = db_session.get(
+        ORMTransaction,
+        transaction_id
+    )
+
+    assert orm_transaction is not None
+    assert orm_transaction.transaction_id == transaction_id
+    assert orm_transaction.description == "Test transaction"
