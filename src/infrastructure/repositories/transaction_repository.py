@@ -15,11 +15,17 @@ class TransactionRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def _to_domain_transaction(self, transaction: ORMTransaction) -> DomainTransaction:
+    def _to_domain_transaction(self,transaction: ORMTransaction) -> DomainTransaction:
+        entries = [
+            self._to_domain_entry(entry)
+            for entry in transaction.entries
+        ]
+
         return DomainTransaction(
             transaction_id=transaction.transaction_id,
             timestamp=transaction.timestamp,
-            description=transaction.description
+            description=transaction.description,
+            entries=entries
         )
 
     def _to_domain_entry(self,entry: ORMEntry) -> DomainEntry:

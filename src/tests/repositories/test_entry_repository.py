@@ -1,15 +1,16 @@
 from uuid import uuid4
+from datetime import datetime, timezone
 
-from src.infrastructure.database.user import User
-from src.infrastructure.database.account import Account
-from src.infrastructure.database.transaction import Transaction
-from src.infrastructure.database.entry import Entry
-from src.infrastructure.repositories.entry_repository import EntryRepository
-
+from src.domain.entry import Entry as DomainEntry
 from src.domain.account import AccountType
 from src.domain.entry import EntryType
 
-from datetime import datetime, timezone
+from src.infrastructure.database.user import User as ORMUser
+from src.infrastructure.database.account import Account as ORMAccount
+from src.infrastructure.database.transaction import Transaction as ORMTransaction
+from src.infrastructure.database.entry import Entry as ORMEntry
+
+from src.infrastructure.repositories.entry_repository import EntryRepository
 
 
 def test_get_by_id(db_session):
@@ -18,26 +19,26 @@ def test_get_by_id(db_session):
     transaction_id = uuid4()
     entry_id = uuid4()
 
-    user = User(
+    user = ORMUser(
         user_id=user_id,
         email=f"{uuid4()}@example.com",
         password_hash="hashed_password"
     )
 
-    account = Account(
+    account = ORMAccount(
         account_id=account_id,
         owner_id=user_id,
         name="Savings Account",
         type=AccountType.ASSET
     )
 
-    transaction = Transaction(
+    transaction = ORMTransaction(
         transaction_id=transaction_id,
         timestamp=datetime.now(timezone.utc),
         description="Test transaction"
     )
 
-    entry = Entry(
+    entry = ORMEntry(
         entry_id=entry_id,
         transaction_id=transaction_id,
         account_id=account_id,
@@ -56,6 +57,9 @@ def test_get_by_id(db_session):
     retrieved_entry = repository.get_by_id(entry_id)
 
     assert retrieved_entry is not None
+    assert isinstance(retrieved_entry, DomainEntry)
+    assert not isinstance(retrieved_entry, ORMEntry)
+
     assert retrieved_entry.entry_id == entry_id
     assert retrieved_entry.transaction_id == transaction_id
     assert retrieved_entry.account_id == account_id
@@ -71,32 +75,32 @@ def test_get_by_account_id(db_session):
     entry_1_id = uuid4()
     entry_2_id = uuid4()
 
-    user = User(
+    user = ORMUser(
         user_id=user_id,
         email=f"{uuid4()}@example.com",
         password_hash="hashed_password"
     )
 
-    account = Account(
+    account = ORMAccount(
         account_id=account_id,
         owner_id=user_id,
         name="Savings Account",
         type=AccountType.ASSET
     )
 
-    transaction_1 = Transaction(
+    transaction_1 = ORMTransaction(
         transaction_id=transaction_1_id,
         timestamp=datetime.now(timezone.utc),
         description="Transaction 1"
     )
 
-    transaction_2 = Transaction(
+    transaction_2 = ORMTransaction(
         transaction_id=transaction_2_id,
         timestamp=datetime.now(timezone.utc),
         description="Transaction 2"
     )
 
-    entry_1 = Entry(
+    entry_1 = ORMEntry(
         entry_id=entry_1_id,
         transaction_id=transaction_1_id,
         account_id=account_id,
@@ -104,7 +108,7 @@ def test_get_by_account_id(db_session):
         amount=20000
     )
 
-    entry_2 = Entry(
+    entry_2 = ORMEntry(
         entry_id=entry_2_id,
         transaction_id=transaction_2_id,
         account_id=account_id,
@@ -125,6 +129,10 @@ def test_get_by_account_id(db_session):
     entries = repository.get_by_account_id(account_id)
 
     assert len(entries) == 2
+
+    for entry in entries:
+        assert isinstance(entry, DomainEntry)
+        assert not isinstance(entry, ORMEntry)
 
     entry_ids = {entry.entry_id for entry in entries}
 

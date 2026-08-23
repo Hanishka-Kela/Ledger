@@ -1,6 +1,7 @@
 from uuid import uuid4
 
-from src.infrastructure.database.user import User
+from src.domain.user import User as DomainUser
+from src.infrastructure.database.user import User as ORMUser
 from src.infrastructure.repositories.user_repository import UserRepository
 
 
@@ -8,7 +9,7 @@ def test_get_by_id(db_session):
     user_id = uuid4()
     email = f"{uuid4()}@example.com"
 
-    user = User(
+    user = ORMUser(
         user_id=user_id,
         email=email,
         password_hash="hashed_password"
@@ -22,6 +23,9 @@ def test_get_by_id(db_session):
     retrieved_user = repository.get_by_id(user_id)
 
     assert retrieved_user is not None
+    assert isinstance(retrieved_user, DomainUser)
+    assert not isinstance(retrieved_user, ORMUser)
+
     assert retrieved_user.user_id == user_id
     assert retrieved_user.email == email
     assert retrieved_user.password_hash == "hashed_password"
@@ -31,7 +35,7 @@ def test_get_by_email(db_session):
     user_id = uuid4()
     email = f"{uuid4()}@example.com"
 
-    user = User(
+    user = ORMUser(
         user_id=user_id,
         email=email,
         password_hash="hashed_password"
@@ -45,6 +49,9 @@ def test_get_by_email(db_session):
     retrieved_user = repository.get_by_email(email)
 
     assert retrieved_user is not None
+    assert isinstance(retrieved_user, DomainUser)
+    assert not isinstance(retrieved_user, ORMUser)
+
     assert retrieved_user.user_id == user_id
     assert retrieved_user.email == email
 
@@ -53,7 +60,7 @@ def test_create(db_session):
     user_id = uuid4()
     email = f"{uuid4()}@example.com"
 
-    user = User(
+    user = DomainUser(
         user_id=user_id,
         email=email,
         password_hash="hashed_password"
@@ -66,18 +73,20 @@ def test_create(db_session):
     db_session.commit()
 
     assert created_user is user
+    assert isinstance(created_user, DomainUser)
 
-    retrieved_user = db_session.get(User, user_id)
+    orm_user = db_session.get(ORMUser, user_id)
 
-    assert retrieved_user is not None
-    assert retrieved_user.user_id == user_id
-    assert retrieved_user.email == email
+    assert orm_user is not None
+    assert orm_user.user_id == user_id
+    assert orm_user.email == email
+    assert orm_user.password_hash == "hashed_password"
 
 
 def test_exists_by_email(db_session):
     email = f"{uuid4()}@example.com"
 
-    user = User(
+    user = ORMUser(
         user_id=uuid4(),
         email=email,
         password_hash="hashed_password"

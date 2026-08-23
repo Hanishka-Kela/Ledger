@@ -19,11 +19,12 @@ class UserRepository:
             password_hash=user.password_hash
         )
 
-    def _to_orm(self, user: DomainUser) -> DomainUser:
-        orm_user = self._to_orm(user)
-        self.session.add(orm_user)
-        return user
-
+    def _to_orm(self, user: DomainUser) -> ORMUser:
+        return ORMUser(
+        user_id=user.user_id,
+        email=user.email,
+        password_hash=user.password_hash
+    )
     def get_by_id(self, user_id: UUID) -> DomainUser | None:
         user = self.session.get(ORMUser, user_id)
 
@@ -42,8 +43,9 @@ class UserRepository:
 
         return self._to_domain(user)
 
-    def create(self, user: ORMUser) -> ORMUser:
-        self.session.add(user)
+    def create(self, user: DomainUser) -> DomainUser:
+        orm_user = self._to_orm(user)
+        self.session.add(orm_user)
         return user
 
     def exists_by_email(self, email: str) -> bool:

@@ -19,6 +19,18 @@ class AccountRepository:
             name=account.name,
             type=account.type,
         )
+    def _to_orm(self, account: DomainAccount) -> ORMAccount:
+        return ORMAccount(
+            account_id=account.account_id,
+            owner_id=account.owner_id,
+            name=account.name,
+            type=account.type
+        )
+
+    def create(self, account: DomainAccount) -> DomainAccount:
+        orm_account = self._to_orm(account)
+        self.session.add(orm_account)
+        return account
 
     def get_by_id(self, account_id: UUID) -> DomainAccount | None:
         account = self.session.get(ORMAccount, account_id)
