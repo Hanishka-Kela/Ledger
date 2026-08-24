@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from src.domain.entry import Entry, EntryType
 from src.domain.transaction import Transaction
-from src.domain.ledger_service import LedgerService
+from application.ledger_service import LedgerService
 
 
 def test_ledger():
