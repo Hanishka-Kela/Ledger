@@ -3,7 +3,7 @@ from uuid import uuid4
 from src.domain.user import User as DomainUser
 from src.infrastructure.repositories.user_repository import UserRepository
 from src.infrastructure.security.password import (hash_password, verify_password)
-
+from src.infrastructure.security.jwt import create_access_token
 
 class AuthService:
     def __init__(self, user_repository: UserRepository):
@@ -29,8 +29,10 @@ class AuthService:
         user =  self.user_repository.get_by_email(email)
 
         if user is None :
-            raise ValueError("Invalid Credentials")
+            raise ValueError("Invalid credentials")
 
         if not verify_password(password, user.password_hash):
-            raise ValueError("Invalid Credentials")
+            raise ValueError("Invalid credentials")
+
+        return create_access_token(user.user_id)
         

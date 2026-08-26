@@ -7,7 +7,112 @@ from src.domain.user import User as DomainUser
 from src.infrastructure.database.user import User as ORMUser
 from src.infrastructure.repositories.user_repository import UserRepository
 
+from src.infrastructure.security.jwt import verify_access_token
+from src.infrastructure.security.password import hash_password
 
+
+def test_login_returns_access_token(db_session):
+    email = f"{uuid4()}@example.com"
+    password = "password123"
+    user_id = uuid4()
+
+    user = ORMUser(
+        user_id=user_id,
+        email=email,
+        password_hash=hash_password(password)
+    )
+
+    db_session.add(user)
+    db_session.commit()
+
+    user_repository = UserRepository(db_session)
+
+    service = AuthService(
+        user_repository=user_repository
+    )
+
+    token = service.login(
+        email=email,
+        password=password
+    )
+
+    assert isinstance(token, str)
+
+    authenticated_user_id = verify_access_token(token)
+
+    assert authenticated_user_id == user_id
+
+
+def test_login_wrong_password(db_session):
+    email = f"{uuid4()}@example.com"
+    password = "password123"
+    wrong_password = "wrongpassword"
+
+    user = ORMUser(
+        user_id=uuid4(),
+        email=email,
+        password_hash=hash_password(password)
+    )
+
+    db_session.add(user)
+    db_session.commit()
+
+    user_repository = UserRepository(db_session)
+
+    service = AuthService(
+        user_repository=user_repository
+    )
+
+    with pytest.raises(ValueError, match="Invalid credentials"):
+        service.login(
+            email=email,
+            password=wrong_password
+        )
+
+
+def test_login_user_does_not_exist(db_session):
+    email = f"{uuid4()}@example.com"
+
+    user_repository = UserRepository(db_session)
+
+    service = AuthService(
+        user_repository=user_repository
+    )
+
+    with pytest.raises(ValueError, match="Invalid credentials"):
+        service.login(
+            email=email,
+            password="password123"
+        )
+
+
+def test_login_token_contains_correct_user_id(db_session):
+    email = f"{uuid4()}@example.com"
+    password = "password123"
+    user_id = uuid4()
+
+    user = ORMUser(
+        user_id=user_id,
+        email=email,
+        password_hash=hash_password(password)
+    )
+
+    db_session.add(user)
+    db_session.commit()
+
+    user_repository = UserRepository(db_session)
+
+    service = AuthService(
+        user_repository=user_repository
+    )
+
+    token = service.login(
+        email=email,
+        password=password
+    )
+
+    assert verify_access_token(token) == user_id
+    
 def test_signup(db_session):
     email = f"{uuid4()}@example.com"
     password = "password123"
