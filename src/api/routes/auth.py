@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from src.domain.user import User as DomainUser
 
 from src.api.schemas.auth import (
     SignUpRequest,
@@ -7,7 +8,7 @@ from src.api.schemas.auth import (
     LoginRequest,
     TokenResponse
 )
-from src.api.dependencies import get_db
+from src.api.dependencies import get_db, get_current_user
 
 from src.application.auth_service import AuthService
 
@@ -65,3 +66,12 @@ def login(
         access_token=token,
         token_type="bearer"
     )
+
+@router.get("/me", response_model=SignUpResponse)
+def get_me(user :DomainUser = Depends(get_current_user)):
+    response = SignUpResponse(
+        user_id=user.user_id,
+        email=user.email
+    )
+
+    return response
