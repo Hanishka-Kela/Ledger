@@ -79,4 +79,14 @@ class LedgerService:
 
         if source_balance< amount :
             raise ValueError("Insufficient funds")
+
+        source_entry_type = self._entry_type_for_change(
+            source_account.type,
+            increase=False
+        )
+
+        destination_entry_type = self._entry_type_for_change(
+            destination_account.type,
+            increase=True
+        )
         
