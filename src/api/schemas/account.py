@@ -12,3 +12,7 @@ class AccountResponse(BaseModel):
     owner_id:UUID
     name:str
     type:AccountType
+
+class BalanceResponse(BaseModel):
+    account_id: UUID
+    balance: int
