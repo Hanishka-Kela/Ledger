@@ -467,3 +467,422 @@ def test_calculate_balance_for_liability_account(
     balance = ledger_service._calculate_balance(account)
 
     assert balance == 750
+
+
+def test_create_opening_balance_success(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    equity_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Opening Equity",
+        type=AccountType.EQUITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        equity_account
+    ]
+
+    transaction = ledger_service.create_opening_balance(
+        requester_user_id=owner_id,
+        account_id=asset_account.account_id,
+        equity_account_id=equity_account.account_id,
+        amount=1000,
+        description="Initial funding"
+    )
+
+    assert transaction.description == "Initial funding"
+    assert len(transaction.entries) == 2
+    assert transaction.is_valid() is True
+
+    asset_entry = transaction.entries[0]
+    equity_entry = transaction.entries[1]
+
+    assert asset_entry.account_id == asset_account.account_id
+    assert asset_entry.type == EntryType.DEBIT
+    assert asset_entry.amount == 1000
+
+    assert equity_entry.account_id == equity_account.account_id
+    assert equity_entry.type == EntryType.CREDIT
+    assert equity_entry.amount == 1000
+
+    assert asset_entry.transaction_id == transaction.transaction_id
+    assert equity_entry.transaction_id == transaction.transaction_id
+
+    transaction_repository.create.assert_called_once_with(
+        transaction
+    )
+
+    assert entry_repository.create.call_count == 2
+
+    entry_repository.create.assert_any_call(
+        asset_entry
+    )
+
+    entry_repository.create.assert_any_call(
+        equity_entry
+    )
+
+
+def test_create_opening_balance_rejects_missing_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    account_repository.get_by_id.return_value = None
+
+    with pytest.raises(
+        ValueError,
+        match="Account does not exist"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=uuid4(),
+            account_id=uuid4(),
+            equity_account_id=uuid4(),
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_rejects_unauthorized_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=uuid4(),
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    account_repository.get_by_id.return_value = asset_account
+
+    with pytest.raises(
+        ValueError,
+        match="Not authorized to use account"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=uuid4(),
+            account_id=asset_account.account_id,
+            equity_account_id=uuid4(),
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_rejects_missing_equity_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        None
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Equity account does not exist"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=asset_account.account_id,
+            equity_account_id=uuid4(),
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_rejects_unauthorized_equity_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    equity_account = Account(
+        account_id=uuid4(),
+        owner_id=uuid4(),
+        name="Opening Equity",
+        type=AccountType.EQUITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        equity_account
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Not authorized to use equity account"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=asset_account.account_id,
+            equity_account_id=equity_account.account_id,
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_requires_asset_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Expense",
+        type=AccountType.EXPENSE
+    )
+
+    equity_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Opening Equity",
+        type=AccountType.EQUITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        account,
+        equity_account
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Opening balance currently supports ASSET accounts only"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=account.account_id,
+            equity_account_id=equity_account.account_id,
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_requires_equity_balancing_account(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    wrong_balancing_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Loan",
+        type=AccountType.LIABILITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        wrong_balancing_account
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Balancing account must be an EQUITY account"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=asset_account.account_id,
+            equity_account_id=wrong_balancing_account.account_id,
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_create_opening_balance_requires_different_accounts(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+    account_id = uuid4()
+
+    asset_account = Account(
+        account_id=account_id,
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    equity_account = Account(
+        account_id=account_id,
+        owner_id=owner_id,
+        name="Opening Equity",
+        type=AccountType.EQUITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        equity_account
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Account and equity account must be different"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=account_id,
+            equity_account_id=account_id,
+            amount=1000,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "amount",
+    [
+        0,
+        -100
+    ]
+)
+def test_create_opening_balance_rejects_non_positive_amount(
+    ledger_service,
+    repositories,
+    amount
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    asset_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    equity_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Opening Equity",
+        type=AccountType.EQUITY
+    )
+
+    account_repository.get_by_id.side_effect = [
+        asset_account,
+        equity_account
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Amount must be positive"
+    ):
+        ledger_service.create_opening_balance(
+            requester_user_id=owner_id,
+            account_id=asset_account.account_id,
+            equity_account_id=equity_account.account_id,
+            amount=amount,
+            description="Initial funding"
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
