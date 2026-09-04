@@ -99,6 +99,87 @@ class LedgerService:
             account
         )
 
+    def get_account_transactions(
+        self,
+        requester_user_id: UUID,
+        account_id: UUID
+    ) -> list[Transaction]:
+
+        account = self.account_repository.get_by_id(
+            account_id
+        )
+
+        if account is None:
+            raise ValueError(
+                "Account does not exist"
+            )
+
+        if account.owner_id != requester_user_id:
+            raise ValueError(
+                "Not authorized to view account transactions"
+            )
+
+        entries = self.entry_repository.get_by_account_id(
+            account_id
+        )
+
+        transaction_ids = []
+
+        for entry in entries:
+            if entry.transaction_id not in transaction_ids:
+                transaction_ids.append(
+                    entry.transaction_id
+                )
+
+        transactions = []
+
+        for transaction_id in transaction_ids:
+            transaction = self.transaction_repository.get_by_id(
+                transaction_id
+            )
+
+            if transaction is not None:
+                transactions.append(
+                    transaction
+                )
+
+        transactions.sort(
+            key=lambda transaction: transaction.timestamp,
+            reverse=True
+        )
+
+        return transactions
+
+    def get_transaction(
+        self,
+        requester_user_id: UUID,
+        transaction_id: UUID
+    ) -> Transaction:
+
+        transaction = self.transaction_repository.get_by_id(
+            transaction_id
+        )
+
+        if transaction is None:
+            raise ValueError(
+                "Transaction does not exist"
+            )
+
+        for entry in transaction.entries:
+            account = self.account_repository.get_by_id(
+                entry.account_id
+            )
+
+            if (
+                account is not None
+                and account.owner_id == requester_user_id
+            ):
+                return transaction
+
+        raise ValueError(
+            "Not authorized to view transaction"
+        )
+
     def post_journal(
         self,
         requester_user_id: UUID,

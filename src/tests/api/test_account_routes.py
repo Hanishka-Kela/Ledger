@@ -151,22 +151,18 @@ def test_authenticated_user_can_get_own_accounts(client):
 
     headers = auth_headers(token)
 
-    client.post(
-        "/accounts",
-        json={
-            "name": "Cash",
-            "account_type": "ASSET"
-        },
-        headers=headers
+    create_account(
+        client,
+        token,
+        "Cash",
+        "ASSET"
     )
 
-    client.post(
-        "/accounts",
-        json={
-            "name": "Expenses",
-            "account_type": "EXPENSE"
-        },
-        headers=headers
+    create_account(
+        client,
+        token,
+        "Expenses",
+        "EXPENSE"
     )
 
     response = client.get(
@@ -215,30 +211,23 @@ def test_user_cannot_see_another_users_accounts(client):
         email="user4@example.com"
     )
 
-    headers1 = auth_headers(token1)
-    headers2 = auth_headers(token2)
-
-    client.post(
-        "/accounts",
-        json={
-            "name": "User 1 Cash",
-            "account_type": "ASSET"
-        },
-        headers=headers1
+    create_account(
+        client,
+        token1,
+        "User 1 Cash",
+        "ASSET"
     )
 
-    client.post(
-        "/accounts",
-        json={
-            "name": "User 2 Cash",
-            "account_type": "ASSET"
-        },
-        headers=headers2
+    create_account(
+        client,
+        token2,
+        "User 2 Cash",
+        "ASSET"
     )
 
     response = client.get(
         "/accounts",
-        headers=headers1
+        headers=auth_headers(token1)
     )
 
     assert response.status_code == 200
@@ -477,6 +466,256 @@ def test_balance_requires_authentication(client):
 
     response = client.get(
         f"/accounts/{account_id}/balance"
+    )
+
+    assert response.status_code == 401
+
+
+def test_account_with_no_entries_has_empty_transaction_history(client):
+    signup_user(
+        client,
+        email="empty-history@example.com"
+    )
+
+    token = login_user(
+        client,
+        email="empty-history@example.com"
+    )
+
+    account = create_account(
+        client,
+        token,
+        "Empty Account",
+        "ASSET"
+    )
+
+    response = client.get(
+        f"/accounts/{account['account_id']}/transactions",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_account_transaction_history_returns_related_transactions(client):
+    signup_user(
+        client,
+        email="history@example.com"
+    )
+
+    token = login_user(
+        client,
+        email="history@example.com"
+    )
+
+    source = create_account(
+        client,
+        token,
+        "Cash",
+        "ASSET"
+    )
+
+    destination = create_account(
+        client,
+        token,
+        "Bank",
+        "ASSET"
+    )
+
+    equity = create_account(
+        client,
+        token,
+        "Owner Equity",
+        "EQUITY"
+    )
+
+    opening_transaction = fund_asset_account(
+        client=client,
+        token=token,
+        asset_account_id=source["account_id"],
+        equity_account_id=equity["account_id"],
+        amount=1000
+    )
+
+    transfer_response = client.post(
+        "/transactions",
+        headers=auth_headers(token),
+        json={
+            "source_account_id": source["account_id"],
+            "destination_account_id": destination["account_id"],
+            "amount": 300,
+            "description": "Move cash to bank"
+        }
+    )
+
+    assert transfer_response.status_code == 201
+
+    transfer_transaction = transfer_response.json()
+
+    response = client.get(
+        f"/accounts/{source['account_id']}/transactions",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 200
+
+    transactions = response.json()
+
+    assert len(transactions) == 2
+
+    transaction_ids = {
+        transaction["transaction_id"]
+        for transaction in transactions
+    }
+
+    assert transaction_ids == {
+        opening_transaction["transaction_id"],
+        transfer_transaction["transaction_id"]
+    }
+
+
+def test_destination_account_history_contains_received_transfer(client):
+    signup_user(
+        client,
+        email="destination-history@example.com"
+    )
+
+    token = login_user(
+        client,
+        email="destination-history@example.com"
+    )
+
+    source = create_account(
+        client,
+        token,
+        "Cash",
+        "ASSET"
+    )
+
+    destination = create_account(
+        client,
+        token,
+        "Bank",
+        "ASSET"
+    )
+
+    equity = create_account(
+        client,
+        token,
+        "Owner Equity",
+        "EQUITY"
+    )
+
+    fund_asset_account(
+        client=client,
+        token=token,
+        asset_account_id=source["account_id"],
+        equity_account_id=equity["account_id"],
+        amount=1000
+    )
+
+    transfer_response = client.post(
+        "/transactions",
+        headers=auth_headers(token),
+        json={
+            "source_account_id": source["account_id"],
+            "destination_account_id": destination["account_id"],
+            "amount": 250,
+            "description": "Received transfer"
+        }
+    )
+
+    assert transfer_response.status_code == 201
+
+    transaction_id = transfer_response.json()["transaction_id"]
+
+    response = client.get(
+        f"/accounts/{destination['account_id']}/transactions",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 200
+
+    transactions = response.json()
+
+    assert len(transactions) == 1
+    assert transactions[0]["transaction_id"] == transaction_id
+    assert transactions[0]["description"] == "Received transfer"
+
+
+def test_account_transaction_history_returns_404_for_missing_account(
+    client
+):
+    signup_user(
+        client,
+        email="missing-history@example.com"
+    )
+
+    token = login_user(
+        client,
+        email="missing-history@example.com"
+    )
+
+    account_id = uuid4()
+
+    response = client.get(
+        f"/accounts/{account_id}/transactions",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 404
+
+    assert response.json() == {
+        "detail": "Account does not exist"
+    }
+
+
+def test_user_cannot_view_another_users_account_transactions(client):
+    signup_user(
+        client,
+        email="history-owner@example.com"
+    )
+
+    signup_user(
+        client,
+        email="history-other@example.com"
+    )
+
+    owner_token = login_user(
+        client,
+        email="history-owner@example.com"
+    )
+
+    other_token = login_user(
+        client,
+        email="history-other@example.com"
+    )
+
+    owner_account = create_account(
+        client,
+        owner_token,
+        "Owner Cash",
+        "ASSET"
+    )
+
+    response = client.get(
+        f"/accounts/{owner_account['account_id']}/transactions",
+        headers=auth_headers(other_token)
+    )
+
+    assert response.status_code == 403
+
+    assert response.json() == {
+        "detail": "Not authorized to view account transactions"
+    }
+
+
+def test_account_transaction_history_requires_authentication(client):
+    account_id = uuid4()
+
+    response = client.get(
+        f"/accounts/{account_id}/transactions"
     )
 
     assert response.status_code == 401

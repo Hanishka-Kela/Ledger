@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -49,6 +51,35 @@ def _raise_http_error(exc: ValueError):
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=message
     )
+
+
+@router.get(
+    "/{transaction_id}",
+    response_model=TransactionResponse
+)
+def get_transaction(
+    transaction_id: UUID,
+    current_user: DomainUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    account_repository = AccountRepository(db)
+    transaction_repository = TransactionRepository(db)
+    entry_repository = EntryRepository(db)
+
+    ledger_service = LedgerService(
+        account_repository=account_repository,
+        transaction_repository=transaction_repository,
+        entry_repository=entry_repository
+    )
+
+    try:
+        return ledger_service.get_transaction(
+            requester_user_id=current_user.user_id,
+            transaction_id=transaction_id
+        )
+
+    except ValueError as exc:
+        _raise_http_error(exc)
 
 
 @router.post(

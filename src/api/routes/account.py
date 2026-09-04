@@ -9,6 +9,8 @@ from src.api.schemas.account import (
     BalanceResponse
 )
 
+from src.api.schemas.transaction import TransactionResponse
+
 from src.api.dependencies import (
     get_current_user,
     get_db
@@ -29,6 +31,27 @@ router = APIRouter(
     prefix="/accounts",
     tags=["accounts"]
 )
+
+
+def _raise_account_http_error(exc: ValueError):
+    message = str(exc)
+
+    if "Not authorized" in message:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=message
+        )
+
+    if "does not exist" in message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=message
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
 
 
 @router.post(
@@ -117,21 +140,33 @@ def get_account_balance(
         )
 
     except ValueError as exc:
-        message = str(exc)
+        _raise_account_http_error(exc)
 
-        if "does not exist" in message:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=message
-            )
 
-        if "Not authorized" in message:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=message
-            )
+@router.get(
+    "/{account_id}/transactions",
+    response_model=list[TransactionResponse]
+)
+def get_account_transactions(
+    account_id: UUID,
+    current_user: DomainUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    account_repository = AccountRepository(db)
+    transaction_repository = TransactionRepository(db)
+    entry_repository = EntryRepository(db)
 
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
+    ledger_service = LedgerService(
+        account_repository=account_repository,
+        transaction_repository=transaction_repository,
+        entry_repository=entry_repository
+    )
+
+    try:
+        return ledger_service.get_account_transactions(
+            requester_user_id=current_user.user_id,
+            account_id=account_id
         )
+
+    except ValueError as exc:
+        _raise_account_http_error(exc)

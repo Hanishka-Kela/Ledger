@@ -77,7 +77,7 @@ def create_journal(
     description: str,
     entries: list[dict]
 ):
-    response = client.post(
+    return client.post(
         "/transactions/journal",
         headers=auth_headers(token),
         json={
@@ -85,8 +85,6 @@ def create_journal(
             "entries": entries
         }
     )
-
-    return response
 
 
 def fund_asset_account(
@@ -717,3 +715,273 @@ def test_failed_transaction_rolls_back_all_database_changes(
         entry_count_after
         == entry_count_before
     )
+
+
+def test_transaction_participant_can_retrieve_transaction(client):
+    signup_user(
+        client,
+        "retrieve-owner@example.com"
+    )
+
+    token = login_user(
+        client,
+        "retrieve-owner@example.com"
+    )
+
+    source = create_account(
+        client,
+        token,
+        "Cash",
+        "ASSET"
+    )
+
+    destination = create_account(
+        client,
+        token,
+        "Bank",
+        "ASSET"
+    )
+
+    equity = create_account(
+        client,
+        token,
+        "Owner Equity",
+        "EQUITY"
+    )
+
+    fund_asset_account(
+        client=client,
+        token=token,
+        asset_account_id=source["account_id"],
+        equity_account_id=equity["account_id"],
+        amount=1000
+    )
+
+    create_response = client.post(
+        "/transactions",
+        headers=auth_headers(token),
+        json={
+            "source_account_id": source["account_id"],
+            "destination_account_id": destination["account_id"],
+            "amount": 300,
+            "description": "Retrievable transfer"
+        }
+    )
+
+    assert create_response.status_code == 201
+
+    created_transaction = create_response.json()
+
+    response = client.get(
+        f"/transactions/{created_transaction['transaction_id']}",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert (
+        data["transaction_id"]
+        == created_transaction["transaction_id"]
+    )
+
+    assert data["description"] == "Retrievable transfer"
+    assert len(data["entries"]) == 2
+
+
+def test_cross_user_receiver_can_retrieve_transaction(client):
+    signup_user(
+        client,
+        "retrieve-sender@example.com"
+    )
+
+    signup_user(
+        client,
+        "retrieve-receiver@example.com"
+    )
+
+    sender_token = login_user(
+        client,
+        "retrieve-sender@example.com"
+    )
+
+    receiver_token = login_user(
+        client,
+        "retrieve-receiver@example.com"
+    )
+
+    sender_cash = create_account(
+        client,
+        sender_token,
+        "Sender Cash",
+        "ASSET"
+    )
+
+    sender_equity = create_account(
+        client,
+        sender_token,
+        "Sender Equity",
+        "EQUITY"
+    )
+
+    receiver_cash = create_account(
+        client,
+        receiver_token,
+        "Receiver Cash",
+        "ASSET"
+    )
+
+    fund_asset_account(
+        client=client,
+        token=sender_token,
+        asset_account_id=sender_cash["account_id"],
+        equity_account_id=sender_equity["account_id"],
+        amount=1000
+    )
+
+    create_response = client.post(
+        "/transactions",
+        headers=auth_headers(sender_token),
+        json={
+            "source_account_id": sender_cash["account_id"],
+            "destination_account_id": receiver_cash["account_id"],
+            "amount": 250,
+            "description": "Cross-user retrieval"
+        }
+    )
+
+    assert create_response.status_code == 201
+
+    transaction_id = create_response.json()["transaction_id"]
+
+    response = client.get(
+        f"/transactions/{transaction_id}",
+        headers=auth_headers(receiver_token)
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["transaction_id"] == transaction_id
+    assert data["description"] == "Cross-user retrieval"
+
+
+def test_unrelated_user_cannot_retrieve_transaction(client):
+    signup_user(
+        client,
+        "transaction-owner@example.com"
+    )
+
+    signup_user(
+        client,
+        "unrelated@example.com"
+    )
+
+    owner_token = login_user(
+        client,
+        "transaction-owner@example.com"
+    )
+
+    unrelated_token = login_user(
+        client,
+        "unrelated@example.com"
+    )
+
+    source = create_account(
+        client,
+        owner_token,
+        "Cash",
+        "ASSET"
+    )
+
+    destination = create_account(
+        client,
+        owner_token,
+        "Bank",
+        "ASSET"
+    )
+
+    equity = create_account(
+        client,
+        owner_token,
+        "Equity",
+        "EQUITY"
+    )
+
+    create_account(
+        client,
+        unrelated_token,
+        "Unrelated Cash",
+        "ASSET"
+    )
+
+    fund_asset_account(
+        client=client,
+        token=owner_token,
+        asset_account_id=source["account_id"],
+        equity_account_id=equity["account_id"],
+        amount=1000
+    )
+
+    create_response = client.post(
+        "/transactions",
+        headers=auth_headers(owner_token),
+        json={
+            "source_account_id": source["account_id"],
+            "destination_account_id": destination["account_id"],
+            "amount": 100,
+            "description": "Private transaction"
+        }
+    )
+
+    assert create_response.status_code == 201
+
+    transaction_id = create_response.json()["transaction_id"]
+
+    response = client.get(
+        f"/transactions/{transaction_id}",
+        headers=auth_headers(unrelated_token)
+    )
+
+    assert response.status_code == 403
+
+    assert response.json() == {
+        "detail": "Not authorized to view transaction"
+    }
+
+
+def test_retrieve_missing_transaction_returns_404(client):
+    signup_user(
+        client,
+        "missing-transaction@example.com"
+    )
+
+    token = login_user(
+        client,
+        "missing-transaction@example.com"
+    )
+
+    transaction_id = uuid4()
+
+    response = client.get(
+        f"/transactions/{transaction_id}",
+        headers=auth_headers(token)
+    )
+
+    assert response.status_code == 404
+
+    assert response.json() == {
+        "detail": "Transaction does not exist"
+    }
+
+
+def test_retrieve_transaction_requires_authentication(client):
+    transaction_id = uuid4()
+
+    response = client.get(
+        f"/transactions/{transaction_id}"
+    )
+
+    assert response.status_code == 401
