@@ -40,6 +40,14 @@ class LedgerService:
 
         return total_credits - total_debits
 
+    def _entry_type_for_change(self, account_type: AccountType, increase: bool) -> EntryType:
+        if account_type in (
+            AccountType.ASSET,
+            AccountType.EXPENSE
+        ):
+            return EntryType.DEBIT if increase else EntryType.CREDIT
+        return EntryType.CREDIT if increase else EntryType.DEBIT
+
     def post_transaction(
     self,
     requester_user_id: UUID,
@@ -64,6 +72,11 @@ class LedgerService:
         if destination_account is None:
             raise ValueError("Destination account does not exist")
 
-        if amount < 0 :
+        if amount <= 0 :
             raise ValueError("Amount must be positive")
+
+        source_balance = self._calculate_balance(source_account)
+
+        if source_balance< amount :
+            raise ValueError("Insufficient funds")
         
