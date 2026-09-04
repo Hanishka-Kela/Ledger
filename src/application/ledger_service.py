@@ -23,7 +23,9 @@ class LedgerService:
         self.entry_repository = entry_repository
 
     def _calculate_balance(self, account) -> int:
-        entries = self.entry_repository.get_by_account_id(account.account_id)
+        entries = self.entry_repository.get_by_account_id(
+            account.account_id
+        )
 
         total_debits = 0
         total_credits = 0
@@ -31,6 +33,7 @@ class LedgerService:
         for entry in entries:
             if entry.type == EntryType.DEBIT:
                 total_debits += entry.amount
+
             elif entry.type == EntryType.CREDIT:
                 total_credits += entry.amount
 
@@ -52,9 +55,119 @@ class LedgerService:
             AccountType.ASSET,
             AccountType.EXPENSE
         ):
-            return EntryType.DEBIT if increase else EntryType.CREDIT
+            return (
+                EntryType.DEBIT
+                if increase
+                else EntryType.CREDIT
+            )
 
-        return EntryType.CREDIT if increase else EntryType.DEBIT
+        return (
+            EntryType.CREDIT
+            if increase
+            else EntryType.DEBIT
+        )
+
+    def create_opening_balance(
+        self,
+        requester_user_id: UUID,
+        account_id: UUID,
+        equity_account_id: UUID,
+        amount: int,
+        description: str
+    ) -> Transaction:
+
+        account = self.account_repository.get_by_id(
+            account_id
+        )
+
+        if account is None:
+            raise ValueError("Account does not exist")
+
+        if account.owner_id != requester_user_id:
+            raise ValueError(
+                "Not authorized to use account"
+            )
+
+        equity_account = self.account_repository.get_by_id(
+            equity_account_id
+        )
+
+        if equity_account is None:
+            raise ValueError(
+                "Equity account does not exist"
+            )
+
+        if equity_account.owner_id != requester_user_id:
+            raise ValueError(
+                "Not authorized to use equity account"
+            )
+
+        if account.type != AccountType.ASSET:
+            raise ValueError(
+                "Opening balance currently supports ASSET accounts only"
+            )
+
+        if equity_account.type != AccountType.EQUITY:
+            raise ValueError(
+                "Balancing account must be an EQUITY account"
+            )
+
+        if account.account_id == equity_account.account_id:
+            raise ValueError(
+                "Account and equity account must be different"
+            )
+
+        if amount <= 0:
+            raise ValueError(
+                "Amount must be positive"
+            )
+
+        transaction_id = uuid4()
+
+        asset_entry = Entry(
+            entry_id=uuid4(),
+            transaction_id=transaction_id,
+            account_id=account.account_id,
+            type=EntryType.DEBIT,
+            amount=amount
+        )
+
+        equity_entry = Entry(
+            entry_id=uuid4(),
+            transaction_id=transaction_id,
+            account_id=equity_account.account_id,
+            type=EntryType.CREDIT,
+            amount=amount
+        )
+
+        transaction = Transaction(
+            transaction_id=transaction_id,
+            timestamp=datetime.now(timezone.utc),
+            description=description,
+            entries=[
+                asset_entry,
+                equity_entry
+            ]
+        )
+
+        if not transaction.is_valid():
+            raise ValueError(
+                "Opening balance transaction is not balanced"
+            )
+
+        self.transaction_repository.create(
+            transaction
+        )
+
+        self.entry_repository.create(
+            asset_entry
+        )
+
+        self.entry_repository.create(
+            equity_entry
+        )
+
+        return transaction
 
     def post_transaction(
         self,
@@ -65,28 +178,42 @@ class LedgerService:
         description: str
     ) -> Transaction:
 
-        source_account = self.account_repository.get_by_id(source_account_id)
+        source_account = self.account_repository.get_by_id(
+            source_account_id
+        )
 
         if source_account is None:
-            raise ValueError("Source account does not exist")
+            raise ValueError(
+                "Source account does not exist"
+            )
 
         if source_account.owner_id != requester_user_id:
-            raise ValueError("Not authorized to use source account")
+            raise ValueError(
+                "Not authorized to use source account"
+            )
 
         destination_account = self.account_repository.get_by_id(
             destination_account_id
         )
 
         if destination_account is None:
-            raise ValueError("Destination account does not exist")
+            raise ValueError(
+                "Destination account does not exist"
+            )
 
         if amount <= 0:
-            raise ValueError("Amount must be positive")
+            raise ValueError(
+                "Amount must be positive"
+            )
 
-        source_balance = self._calculate_balance(source_account)
+        source_balance = self._calculate_balance(
+            source_account
+        )
 
         if source_balance < amount:
-            raise ValueError("Insufficient funds")
+            raise ValueError(
+                "Insufficient funds"
+            )
 
         source_entry_type = self._entry_type_for_change(
             source_account.type,
@@ -132,11 +259,20 @@ class LedgerService:
         )
 
         if not transaction.is_valid():
-            raise ValueError("Transaction is not balanced")
+            raise ValueError(
+                "Transaction is not balanced"
+            )
 
-        self.transaction_repository.create(transaction)
-        self.entry_repository.create(source_entry)
-        self.entry_repository.create(destination_entry)
-        
+        self.transaction_repository.create(
+            transaction
+        )
+
+        self.entry_repository.create(
+            source_entry
+        )
+
+        self.entry_repository.create(
+            destination_entry
+        )
 
         return transaction
