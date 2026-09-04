@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel
 
 from src.domain.entry import EntryType
 
@@ -12,11 +13,15 @@ class CreateTransactionRequest(BaseModel):
     description: str
 
 
-class CreateOpeningBalanceRequest(BaseModel):
+class JournalEntryRequest(BaseModel):
     account_id: UUID
-    equity_account_id: UUID
+    type: EntryType
     amount: int
+
+
+class CreateJournalTransactionRequest(BaseModel):
     description: str
+    entries: list[JournalEntryRequest]
 
 
 class EntryResponse(BaseModel):

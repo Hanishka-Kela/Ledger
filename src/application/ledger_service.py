@@ -1,13 +1,21 @@
-from uuid import UUID, uuid4
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
+from src.domain.account import AccountType
 from src.domain.entry import Entry, EntryType
 from src.domain.transaction import Transaction
-from src.domain.account import AccountType
 
 from src.infrastructure.repositories.account_repository import AccountRepository
 from src.infrastructure.repositories.transaction_repository import TransactionRepository
 from src.infrastructure.repositories.entry_repository import EntryRepository
+
+
+@dataclass(frozen=True)
+class JournalEntryInput:
+    account_id: UUID
+    type: EntryType
+    amount: int
 
 
 class LedgerService:
@@ -67,105 +75,73 @@ class LedgerService:
             else EntryType.DEBIT
         )
 
-    def create_opening_balance(
+    def post_journal(
         self,
         requester_user_id: UUID,
-        account_id: UUID,
-        equity_account_id: UUID,
-        amount: int,
+        entries: list[JournalEntryInput],
         description: str
     ) -> Transaction:
 
-        account = self.account_repository.get_by_id(
-            account_id
-        )
-
-        if account is None:
-            raise ValueError("Account does not exist")
-
-        if account.owner_id != requester_user_id:
+        if len(entries) < 2:
             raise ValueError(
-                "Not authorized to use account"
+                "Journal transaction must contain at least two entries"
             )
 
-        equity_account = self.account_repository.get_by_id(
-            equity_account_id
-        )
-
-        if equity_account is None:
-            raise ValueError(
-                "Equity account does not exist"
-            )
-
-        if equity_account.owner_id != requester_user_id:
-            raise ValueError(
-                "Not authorized to use equity account"
-            )
-
-        if account.type != AccountType.ASSET:
-            raise ValueError(
-                "Opening balance currently supports ASSET accounts only"
-            )
-
-        if equity_account.type != AccountType.EQUITY:
-            raise ValueError(
-                "Balancing account must be an EQUITY account"
-            )
-
-        if account.account_id == equity_account.account_id:
-            raise ValueError(
-                "Account and equity account must be different"
-            )
-
-        if amount <= 0:
-            raise ValueError(
-                "Amount must be positive"
-            )
+        domain_entries = []
 
         transaction_id = uuid4()
 
-        asset_entry = Entry(
-            entry_id=uuid4(),
-            transaction_id=transaction_id,
-            account_id=account.account_id,
-            type=EntryType.DEBIT,
-            amount=amount
-        )
+        for entry_input in entries:
 
-        equity_entry = Entry(
-            entry_id=uuid4(),
-            transaction_id=transaction_id,
-            account_id=equity_account.account_id,
-            type=EntryType.CREDIT,
-            amount=amount
-        )
+            account = self.account_repository.get_by_id(
+                entry_input.account_id
+            )
+
+            if account is None:
+                raise ValueError(
+                    "Journal entry account does not exist"
+                )
+
+            if account.owner_id != requester_user_id:
+                raise ValueError(
+                    "Not authorized to use journal entry account"
+                )
+
+            if entry_input.amount <= 0:
+                raise ValueError(
+                    "Journal entry amount must be positive"
+                )
+
+            domain_entry = Entry(
+                entry_id=uuid4(),
+                transaction_id=transaction_id,
+                account_id=entry_input.account_id,
+                type=entry_input.type,
+                amount=entry_input.amount
+            )
+
+            domain_entries.append(domain_entry)
 
         transaction = Transaction(
             transaction_id=transaction_id,
             timestamp=datetime.now(timezone.utc),
             description=description,
-            entries=[
-                asset_entry,
-                equity_entry
-            ]
+            entries=domain_entries
         )
 
         if not transaction.is_valid():
             raise ValueError(
-                "Opening balance transaction is not balanced"
+                "Journal transaction is not balanced"
             )
 
         self.transaction_repository.create(
             transaction
         )
 
-        self.entry_repository.create(
-            asset_entry
-        )
-
-        self.entry_repository.create(
-            equity_entry
-        )
+        for entry in domain_entries:
+            self.entry_repository.create(
+                entry
+            )
 
         return transaction
 

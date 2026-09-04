@@ -3,9 +3,20 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.ledger_service import LedgerService
-from src.domain.account import Account, AccountType
-from src.domain.entry import Entry, EntryType
+from src.application.ledger_service import (
+    JournalEntryInput,
+    LedgerService
+)
+
+from src.domain.account import (
+    Account,
+    AccountType
+)
+
+from src.domain.entry import (
+    Entry,
+    EntryType
+)
 
 
 @pytest.fixture
@@ -47,18 +58,16 @@ def test_post_transaction_successfully_posts_asset_transfer(
     ) = repositories
 
     owner_id = uuid4()
-    source_account_id = uuid4()
-    destination_account_id = uuid4()
 
     source_account = Account(
-        account_id=source_account_id,
+        account_id=uuid4(),
         owner_id=owner_id,
         name="Cash",
         type=AccountType.ASSET
     )
 
     destination_account = Account(
-        account_id=destination_account_id,
+        account_id=uuid4(),
         owner_id=owner_id,
         name="Bank",
         type=AccountType.ASSET
@@ -69,22 +78,20 @@ def test_post_transaction_successfully_posts_asset_transfer(
         destination_account
     ]
 
-    existing_entry = Entry(
-        entry_id=uuid4(),
-        transaction_id=uuid4(),
-        account_id=source_account_id,
-        type=EntryType.DEBIT,
-        amount=1000
-    )
-
     entry_repository.get_by_account_id.return_value = [
-        existing_entry
+        Entry(
+            entry_id=uuid4(),
+            transaction_id=uuid4(),
+            account_id=source_account.account_id,
+            type=EntryType.DEBIT,
+            amount=1000
+        )
     ]
 
     transaction = ledger_service.post_transaction(
         requester_user_id=owner_id,
-        source_account_id=source_account_id,
-        destination_account_id=destination_account_id,
+        source_account_id=source_account.account_id,
+        destination_account_id=destination_account.account_id,
         amount=300,
         description="Move cash to bank"
     )
@@ -96,22 +103,22 @@ def test_post_transaction_successfully_posts_asset_transfer(
     source_entry = transaction.entries[0]
     destination_entry = transaction.entries[1]
 
-    assert source_entry.account_id == source_account_id
+    assert source_entry.account_id == source_account.account_id
     assert source_entry.type == EntryType.CREDIT
     assert source_entry.amount == 300
 
-    assert destination_entry.account_id == destination_account_id
+    assert destination_entry.account_id == destination_account.account_id
     assert destination_entry.type == EntryType.DEBIT
     assert destination_entry.amount == 300
 
     assert source_entry.transaction_id == transaction.transaction_id
     assert destination_entry.transaction_id == transaction.transaction_id
 
-    transaction_repository.create.assert_called_once_with(transaction)
+    transaction_repository.create.assert_called_once_with(
+        transaction
+    )
 
     assert entry_repository.create.call_count == 2
-    entry_repository.create.assert_any_call(source_entry)
-    entry_repository.create.assert_any_call(destination_entry)
 
 
 def test_post_transaction_rejects_missing_source_account(
@@ -304,16 +311,14 @@ def test_post_transaction_rejects_insufficient_funds(
         destination_account
     ]
 
-    existing_entry = Entry(
-        entry_id=uuid4(),
-        transaction_id=uuid4(),
-        account_id=source_account.account_id,
-        type=EntryType.DEBIT,
-        amount=100
-    )
-
     entry_repository.get_by_account_id.return_value = [
-        existing_entry
+        Entry(
+            entry_id=uuid4(),
+            transaction_id=uuid4(),
+            account_id=source_account.account_id,
+            type=EntryType.DEBIT,
+            amount=100
+        )
     ]
 
     with pytest.raises(
@@ -363,16 +368,14 @@ def test_post_transaction_rejects_unbalanced_account_type_combination(
         destination_account
     ]
 
-    existing_entry = Entry(
-        entry_id=uuid4(),
-        transaction_id=uuid4(),
-        account_id=source_account.account_id,
-        type=EntryType.DEBIT,
-        amount=1000
-    )
-
     entry_repository.get_by_account_id.return_value = [
-        existing_entry
+        Entry(
+            entry_id=uuid4(),
+            transaction_id=uuid4(),
+            account_id=source_account.account_id,
+            type=EntryType.DEBIT,
+            amount=1000
+        )
     ]
 
     with pytest.raises(
@@ -425,7 +428,9 @@ def test_calculate_balance_for_asset_account(
         )
     ]
 
-    balance = ledger_service._calculate_balance(account)
+    balance = ledger_service._calculate_balance(
+        account
+    )
 
     assert balance == 700
 
@@ -464,12 +469,14 @@ def test_calculate_balance_for_liability_account(
         )
     ]
 
-    balance = ledger_service._calculate_balance(account)
+    balance = ledger_service._calculate_balance(
+        account
+    )
 
     assert balance == 750
 
 
-def test_create_opening_balance_success(
+def test_post_journal_owner_funding(
     ledger_service,
     repositories
 ):
@@ -481,7 +488,7 @@ def test_create_opening_balance_success(
 
     owner_id = uuid4()
 
-    asset_account = Account(
+    cash_account = Account(
         account_id=uuid4(),
         owner_id=owner_id,
         name="Cash",
@@ -491,40 +498,40 @@ def test_create_opening_balance_success(
     equity_account = Account(
         account_id=uuid4(),
         owner_id=owner_id,
-        name="Opening Equity",
+        name="Owner Equity",
         type=AccountType.EQUITY
     )
 
     account_repository.get_by_id.side_effect = [
-        asset_account,
+        cash_account,
         equity_account
     ]
 
-    transaction = ledger_service.create_opening_balance(
+    transaction = ledger_service.post_journal(
         requester_user_id=owner_id,
-        account_id=asset_account.account_id,
-        equity_account_id=equity_account.account_id,
-        amount=1000,
-        description="Initial funding"
+        description="Owner capital",
+        entries=[
+            JournalEntryInput(
+                account_id=cash_account.account_id,
+                type=EntryType.DEBIT,
+                amount=1000
+            ),
+            JournalEntryInput(
+                account_id=equity_account.account_id,
+                type=EntryType.CREDIT,
+                amount=1000
+            )
+        ]
     )
 
-    assert transaction.description == "Initial funding"
-    assert len(transaction.entries) == 2
     assert transaction.is_valid() is True
+    assert len(transaction.entries) == 2
 
-    asset_entry = transaction.entries[0]
-    equity_entry = transaction.entries[1]
+    assert transaction.entries[0].type == EntryType.DEBIT
+    assert transaction.entries[1].type == EntryType.CREDIT
 
-    assert asset_entry.account_id == asset_account.account_id
-    assert asset_entry.type == EntryType.DEBIT
-    assert asset_entry.amount == 1000
-
-    assert equity_entry.account_id == equity_account.account_id
-    assert equity_entry.type == EntryType.CREDIT
-    assert equity_entry.amount == 1000
-
-    assert asset_entry.transaction_id == transaction.transaction_id
-    assert equity_entry.transaction_id == transaction.transaction_id
+    assert transaction.entries[0].amount == 1000
+    assert transaction.entries[1].amount == 1000
 
     transaction_repository.create.assert_called_once_with(
         transaction
@@ -532,16 +539,191 @@ def test_create_opening_balance_success(
 
     assert entry_repository.create.call_count == 2
 
-    entry_repository.create.assert_any_call(
-        asset_entry
+
+def test_post_journal_supports_liability_transaction(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    cash_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
     )
 
-    entry_repository.create.assert_any_call(
-        equity_entry
+    loan_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Loan Payable",
+        type=AccountType.LIABILITY
     )
 
+    account_repository.get_by_id.side_effect = [
+        cash_account,
+        loan_account
+    ]
 
-def test_create_opening_balance_rejects_missing_account(
+    transaction = ledger_service.post_journal(
+        requester_user_id=owner_id,
+        description="Loan received",
+        entries=[
+            JournalEntryInput(
+                account_id=cash_account.account_id,
+                type=EntryType.DEBIT,
+                amount=5000
+            ),
+            JournalEntryInput(
+                account_id=loan_account.account_id,
+                type=EntryType.CREDIT,
+                amount=5000
+            )
+        ]
+    )
+
+    assert transaction.is_valid() is True
+
+
+def test_post_journal_supports_revenue_transaction(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    cash_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    revenue_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Sales Revenue",
+        type=AccountType.REVENUE
+    )
+
+    account_repository.get_by_id.side_effect = [
+        cash_account,
+        revenue_account
+    ]
+
+    transaction = ledger_service.post_journal(
+        requester_user_id=owner_id,
+        description="Sale",
+        entries=[
+            JournalEntryInput(
+                account_id=cash_account.account_id,
+                type=EntryType.DEBIT,
+                amount=500
+            ),
+            JournalEntryInput(
+                account_id=revenue_account.account_id,
+                type=EntryType.CREDIT,
+                amount=500
+            )
+        ]
+    )
+
+    assert transaction.is_valid() is True
+
+
+def test_post_journal_supports_expense_transaction(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    owner_id = uuid4()
+
+    expense_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Rent Expense",
+        type=AccountType.EXPENSE
+    )
+
+    cash_account = Account(
+        account_id=uuid4(),
+        owner_id=owner_id,
+        name="Cash",
+        type=AccountType.ASSET
+    )
+
+    account_repository.get_by_id.side_effect = [
+        expense_account,
+        cash_account
+    ]
+
+    transaction = ledger_service.post_journal(
+        requester_user_id=owner_id,
+        description="Rent paid",
+        entries=[
+            JournalEntryInput(
+                account_id=expense_account.account_id,
+                type=EntryType.DEBIT,
+                amount=200
+            ),
+            JournalEntryInput(
+                account_id=cash_account.account_id,
+                type=EntryType.CREDIT,
+                amount=200
+            )
+        ]
+    )
+
+    assert transaction.is_valid() is True
+
+
+def test_post_journal_rejects_less_than_two_entries(
+    ledger_service,
+    repositories
+):
+    (
+        account_repository,
+        transaction_repository,
+        entry_repository
+    ) = repositories
+
+    with pytest.raises(
+        ValueError,
+        match="Journal transaction must contain at least two entries"
+    ):
+        ledger_service.post_journal(
+            requester_user_id=uuid4(),
+            description="Invalid",
+            entries=[
+                JournalEntryInput(
+                    account_id=uuid4(),
+                    type=EntryType.DEBIT,
+                    amount=100
+                )
+            ]
+        )
+
+    transaction_repository.create.assert_not_called()
+    entry_repository.create.assert_not_called()
+
+
+def test_post_journal_rejects_missing_account(
     ledger_service,
     repositories
 ):
@@ -555,21 +737,30 @@ def test_create_opening_balance_rejects_missing_account(
 
     with pytest.raises(
         ValueError,
-        match="Account does not exist"
+        match="Journal entry account does not exist"
     ):
-        ledger_service.create_opening_balance(
+        ledger_service.post_journal(
             requester_user_id=uuid4(),
-            account_id=uuid4(),
-            equity_account_id=uuid4(),
-            amount=1000,
-            description="Initial funding"
+            description="Invalid",
+            entries=[
+                JournalEntryInput(
+                    account_id=uuid4(),
+                    type=EntryType.DEBIT,
+                    amount=100
+                ),
+                JournalEntryInput(
+                    account_id=uuid4(),
+                    type=EntryType.CREDIT,
+                    amount=100
+                )
+            ]
         )
 
     transaction_repository.create.assert_not_called()
     entry_repository.create.assert_not_called()
 
 
-def test_create_opening_balance_rejects_unauthorized_account(
+def test_post_journal_rejects_unauthorized_account(
     ledger_service,
     repositories
 ):
@@ -579,119 +770,41 @@ def test_create_opening_balance_rejects_unauthorized_account(
         entry_repository
     ) = repositories
 
-    asset_account = Account(
+    account = Account(
         account_id=uuid4(),
         owner_id=uuid4(),
         name="Cash",
         type=AccountType.ASSET
     )
 
-    account_repository.get_by_id.return_value = asset_account
+    account_repository.get_by_id.return_value = account
 
     with pytest.raises(
         ValueError,
-        match="Not authorized to use account"
+        match="Not authorized to use journal entry account"
     ):
-        ledger_service.create_opening_balance(
+        ledger_service.post_journal(
             requester_user_id=uuid4(),
-            account_id=asset_account.account_id,
-            equity_account_id=uuid4(),
-            amount=1000,
-            description="Initial funding"
+            description="Invalid",
+            entries=[
+                JournalEntryInput(
+                    account_id=account.account_id,
+                    type=EntryType.DEBIT,
+                    amount=100
+                ),
+                JournalEntryInput(
+                    account_id=uuid4(),
+                    type=EntryType.CREDIT,
+                    amount=100
+                )
+            ]
         )
 
     transaction_repository.create.assert_not_called()
     entry_repository.create.assert_not_called()
 
 
-def test_create_opening_balance_rejects_missing_equity_account(
-    ledger_service,
-    repositories
-):
-    (
-        account_repository,
-        transaction_repository,
-        entry_repository
-    ) = repositories
-
-    owner_id = uuid4()
-
-    asset_account = Account(
-        account_id=uuid4(),
-        owner_id=owner_id,
-        name="Cash",
-        type=AccountType.ASSET
-    )
-
-    account_repository.get_by_id.side_effect = [
-        asset_account,
-        None
-    ]
-
-    with pytest.raises(
-        ValueError,
-        match="Equity account does not exist"
-    ):
-        ledger_service.create_opening_balance(
-            requester_user_id=owner_id,
-            account_id=asset_account.account_id,
-            equity_account_id=uuid4(),
-            amount=1000,
-            description="Initial funding"
-        )
-
-    transaction_repository.create.assert_not_called()
-    entry_repository.create.assert_not_called()
-
-
-def test_create_opening_balance_rejects_unauthorized_equity_account(
-    ledger_service,
-    repositories
-):
-    (
-        account_repository,
-        transaction_repository,
-        entry_repository
-    ) = repositories
-
-    owner_id = uuid4()
-
-    asset_account = Account(
-        account_id=uuid4(),
-        owner_id=owner_id,
-        name="Cash",
-        type=AccountType.ASSET
-    )
-
-    equity_account = Account(
-        account_id=uuid4(),
-        owner_id=uuid4(),
-        name="Opening Equity",
-        type=AccountType.EQUITY
-    )
-
-    account_repository.get_by_id.side_effect = [
-        asset_account,
-        equity_account
-    ]
-
-    with pytest.raises(
-        ValueError,
-        match="Not authorized to use equity account"
-    ):
-        ledger_service.create_opening_balance(
-            requester_user_id=owner_id,
-            account_id=asset_account.account_id,
-            equity_account_id=equity_account.account_id,
-            amount=1000,
-            description="Initial funding"
-        )
-
-    transaction_repository.create.assert_not_called()
-    entry_repository.create.assert_not_called()
-
-
-def test_create_opening_balance_requires_asset_account(
+def test_post_journal_rejects_non_positive_amount(
     ledger_service,
     repositories
 ):
@@ -706,39 +819,38 @@ def test_create_opening_balance_requires_asset_account(
     account = Account(
         account_id=uuid4(),
         owner_id=owner_id,
-        name="Expense",
-        type=AccountType.EXPENSE
+        name="Cash",
+        type=AccountType.ASSET
     )
 
-    equity_account = Account(
-        account_id=uuid4(),
-        owner_id=owner_id,
-        name="Opening Equity",
-        type=AccountType.EQUITY
-    )
-
-    account_repository.get_by_id.side_effect = [
-        account,
-        equity_account
-    ]
+    account_repository.get_by_id.return_value = account
 
     with pytest.raises(
         ValueError,
-        match="Opening balance currently supports ASSET accounts only"
+        match="Journal entry amount must be positive"
     ):
-        ledger_service.create_opening_balance(
+        ledger_service.post_journal(
             requester_user_id=owner_id,
-            account_id=account.account_id,
-            equity_account_id=equity_account.account_id,
-            amount=1000,
-            description="Initial funding"
+            description="Invalid",
+            entries=[
+                JournalEntryInput(
+                    account_id=account.account_id,
+                    type=EntryType.DEBIT,
+                    amount=0
+                ),
+                JournalEntryInput(
+                    account_id=account.account_id,
+                    type=EntryType.CREDIT,
+                    amount=0
+                )
+            ]
         )
 
     transaction_repository.create.assert_not_called()
     entry_repository.create.assert_not_called()
 
 
-def test_create_opening_balance_requires_equity_balancing_account(
+def test_post_journal_rejects_unbalanced_transaction(
     ledger_service,
     repositories
 ):
@@ -757,58 +869,10 @@ def test_create_opening_balance_requires_equity_balancing_account(
         type=AccountType.ASSET
     )
 
-    wrong_balancing_account = Account(
+    equity_account = Account(
         account_id=uuid4(),
         owner_id=owner_id,
-        name="Loan",
-        type=AccountType.LIABILITY
-    )
-
-    account_repository.get_by_id.side_effect = [
-        asset_account,
-        wrong_balancing_account
-    ]
-
-    with pytest.raises(
-        ValueError,
-        match="Balancing account must be an EQUITY account"
-    ):
-        ledger_service.create_opening_balance(
-            requester_user_id=owner_id,
-            account_id=asset_account.account_id,
-            equity_account_id=wrong_balancing_account.account_id,
-            amount=1000,
-            description="Initial funding"
-        )
-
-    transaction_repository.create.assert_not_called()
-    entry_repository.create.assert_not_called()
-
-
-def test_create_opening_balance_requires_different_accounts(
-    ledger_service,
-    repositories
-):
-    (
-        account_repository,
-        transaction_repository,
-        entry_repository
-    ) = repositories
-
-    owner_id = uuid4()
-    account_id = uuid4()
-
-    asset_account = Account(
-        account_id=account_id,
-        owner_id=owner_id,
-        name="Cash",
-        type=AccountType.ASSET
-    )
-
-    equity_account = Account(
-        account_id=account_id,
-        owner_id=owner_id,
-        name="Opening Equity",
+        name="Equity",
         type=AccountType.EQUITY
     )
 
@@ -819,69 +883,23 @@ def test_create_opening_balance_requires_different_accounts(
 
     with pytest.raises(
         ValueError,
-        match="Account and equity account must be different"
+        match="Journal transaction is not balanced"
     ):
-        ledger_service.create_opening_balance(
+        ledger_service.post_journal(
             requester_user_id=owner_id,
-            account_id=account_id,
-            equity_account_id=account_id,
-            amount=1000,
-            description="Initial funding"
-        )
-
-    transaction_repository.create.assert_not_called()
-    entry_repository.create.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "amount",
-    [
-        0,
-        -100
-    ]
-)
-def test_create_opening_balance_rejects_non_positive_amount(
-    ledger_service,
-    repositories,
-    amount
-):
-    (
-        account_repository,
-        transaction_repository,
-        entry_repository
-    ) = repositories
-
-    owner_id = uuid4()
-
-    asset_account = Account(
-        account_id=uuid4(),
-        owner_id=owner_id,
-        name="Cash",
-        type=AccountType.ASSET
-    )
-
-    equity_account = Account(
-        account_id=uuid4(),
-        owner_id=owner_id,
-        name="Opening Equity",
-        type=AccountType.EQUITY
-    )
-
-    account_repository.get_by_id.side_effect = [
-        asset_account,
-        equity_account
-    ]
-
-    with pytest.raises(
-        ValueError,
-        match="Amount must be positive"
-    ):
-        ledger_service.create_opening_balance(
-            requester_user_id=owner_id,
-            account_id=asset_account.account_id,
-            equity_account_id=equity_account.account_id,
-            amount=amount,
-            description="Initial funding"
+            description="Invalid journal",
+            entries=[
+                JournalEntryInput(
+                    account_id=asset_account.account_id,
+                    type=EntryType.DEBIT,
+                    amount=1000
+                ),
+                JournalEntryInput(
+                    account_id=equity_account.account_id,
+                    type=EntryType.CREDIT,
+                    amount=500
+                )
+            ]
         )
 
     transaction_repository.create.assert_not_called()

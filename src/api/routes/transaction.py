@@ -1,22 +1,25 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from src.api.schemas.transaction import (
-    CreateTransactionRequest,
-    CreateOpeningBalanceRequest,
-    TransactionResponse
-)
-
 from src.api.dependencies import (
     get_db,
     get_current_user
 )
 
+from src.api.schemas.transaction import (
+    CreateTransactionRequest,
+    CreateJournalTransactionRequest,
+    TransactionResponse
+)
+
+from src.application.ledger_service import (
+    JournalEntryInput,
+    LedgerService
+)
+
 from src.infrastructure.repositories.account_repository import AccountRepository
 from src.infrastructure.repositories.transaction_repository import TransactionRepository
 from src.infrastructure.repositories.entry_repository import EntryRepository
-
-from src.application.ledger_service import LedgerService
 
 from src.domain.user import User as DomainUser
 
@@ -65,11 +68,11 @@ def create_transaction(
 
 
 @router.post(
-    "/opening-balance",
+    "/journal",
     response_model=TransactionResponse
 )
-def create_opening_balance(
-    request: CreateOpeningBalanceRequest,
+def create_journal_transaction(
+    request: CreateJournalTransactionRequest,
     current_user: DomainUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -83,12 +86,19 @@ def create_opening_balance(
         entry_repository=entry_repository
     )
 
+    journal_entries = [
+        JournalEntryInput(
+            account_id=entry.account_id,
+            type=entry.type,
+            amount=entry.amount
+        )
+        for entry in request.entries
+    ]
+
     try:
-        transaction = ledger_service.create_opening_balance(
+        transaction = ledger_service.post_journal(
             requester_user_id=current_user.user_id,
-            account_id=request.account_id,
-            equity_account_id=request.equity_account_id,
-            amount=request.amount,
+            entries=journal_entries,
             description=request.description
         )
 
