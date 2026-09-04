@@ -134,4 +134,9 @@ class LedgerService:
         if not transaction.is_valid():
             raise ValueError("Transaction is not balanced")
 
+        self.transaction_repository.create(transaction)
+        self.entry_repository.create(source_entry)
+        self.entry_repository.create(destination_entry)
+        
+
         return transaction
