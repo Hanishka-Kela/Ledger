@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from src.api.dependencies import (
@@ -28,6 +28,27 @@ router = APIRouter(
     prefix="/transactions",
     tags=["Transactions"]
 )
+
+
+def _raise_http_error(exc: ValueError):
+    message = str(exc)
+
+    if "Not authorized" in message:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=message
+        )
+
+    if "does not exist" in message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=message
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=message
+    )
 
 
 @router.post(
@@ -61,6 +82,10 @@ def create_transaction(
         db.commit()
 
         return transaction
+
+    except ValueError as exc:
+        db.rollback()
+        _raise_http_error(exc)
 
     except Exception:
         db.rollback()
@@ -105,6 +130,10 @@ def create_journal_transaction(
         db.commit()
 
         return transaction
+
+    except ValueError as exc:
+        db.rollback()
+        _raise_http_error(exc)
 
     except Exception:
         db.rollback()
