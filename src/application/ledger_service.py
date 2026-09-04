@@ -131,4 +131,7 @@ class LedgerService:
             ]
         )
 
+        if not transaction.is_valid():
+            raise ValueError("Transaction is not balanced")
+
         return transaction
