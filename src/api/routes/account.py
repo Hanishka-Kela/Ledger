@@ -33,7 +33,8 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=AccountResponse
+    response_model=AccountResponse,
+    status_code=status.HTTP_201_CREATED
 )
 def create_account(
     request: CreateAccountRequest,

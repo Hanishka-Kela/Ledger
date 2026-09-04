@@ -53,7 +53,8 @@ def _raise_http_error(exc: ValueError):
 
 @router.post(
     "",
-    response_model=TransactionResponse
+    response_model=TransactionResponse,
+    status_code=status.HTTP_201_CREATED
 )
 def create_transaction(
     request: CreateTransactionRequest,
@@ -94,7 +95,8 @@ def create_transaction(
 
 @router.post(
     "/journal",
-    response_model=TransactionResponse
+    response_model=TransactionResponse,
+    status_code=status.HTTP_201_CREATED
 )
 def create_journal_transaction(
     request: CreateJournalTransactionRequest,

@@ -22,7 +22,7 @@ def signup_user(
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -66,7 +66,7 @@ def create_account(
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -114,7 +114,7 @@ def fund_asset_account(
         ]
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -162,7 +162,7 @@ def test_journal_transaction_success(client):
         ]
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -239,7 +239,7 @@ def test_normal_asset_transfer_success(client):
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -319,7 +319,7 @@ def test_cross_user_transfer_success(client):
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 

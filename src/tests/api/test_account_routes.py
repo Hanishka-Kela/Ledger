@@ -15,7 +15,7 @@ def signup_user(
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -59,7 +59,7 @@ def create_account(
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -91,7 +91,7 @@ def fund_asset_account(
         }
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     return response.json()
 
@@ -128,7 +128,7 @@ def test_authenticated_user_can_create_account(client):
         headers=auth_headers(token)
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     data = response.json()
 
@@ -381,7 +381,7 @@ def test_balance_reflects_completed_transfer(client):
         }
     )
 
-    assert transfer_response.status_code == 200
+    assert transfer_response.status_code == 201
 
     source_balance_response = client.get(
         f"/accounts/{source['account_id']}/balance",
