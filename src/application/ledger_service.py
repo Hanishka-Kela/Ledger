@@ -75,6 +75,30 @@ class LedgerService:
             else EntryType.DEBIT
         )
 
+    def get_account_balance(
+        self,
+        requester_user_id: UUID,
+        account_id: UUID
+    ) -> int:
+
+        account = self.account_repository.get_by_id(
+            account_id
+        )
+
+        if account is None:
+            raise ValueError(
+                "Account does not exist"
+            )
+
+        if account.owner_id != requester_user_id:
+            raise ValueError(
+                "Not authorized to view account"
+            )
+
+        return self._calculate_balance(
+            account
+        )
+
     def post_journal(
         self,
         requester_user_id: UUID,
@@ -120,7 +144,9 @@ class LedgerService:
                 amount=entry_input.amount
             )
 
-            domain_entries.append(domain_entry)
+            domain_entries.append(
+                domain_entry
+            )
 
         transaction = Transaction(
             transaction_id=transaction_id,
